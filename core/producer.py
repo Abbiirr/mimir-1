@@ -5,7 +5,7 @@ from typing import Any, Mapping, Optional, Dict
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
 
-from settings import get_settings
+from core.settings import get_settings
 
 logger = logging.getLogger(__name__)
 

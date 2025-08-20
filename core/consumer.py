@@ -5,7 +5,7 @@ from kafka import KafkaConsumer
 from kafka.consumer.fetcher import ConsumerRecord
 from kafka.errors import KafkaError
 
-from settings import get_settings
+from core.settings import get_settings
 
 logger = logging.getLogger(__name__)
 

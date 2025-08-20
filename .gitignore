@@ -4,3 +4,7 @@
 .env
 
 core/__pycache__/
+
+excel/excels/
+
+*.pyc

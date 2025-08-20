@@ -13,6 +13,7 @@ from decimal import Decimal
 from openpyxl import load_workbook
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer  # swap to PollingObserver for network shares
+from excel_kafka_publisher import publish_excel_changes, close_publisher
 
 # -------- settings --------
 WATCH_DIR = Path("./excels").resolve()
@@ -187,6 +188,7 @@ def _diff_and_log(path: Path) -> None:
     # persist new state
     STATE[str(path)] = now_map
     _save_state(STATE)
+    publish_excel_changes(path, new_rows, upd_rows)
 
 # -------- watchdog handler --------
 class ExcelHandler(PatternMatchingEventHandler):
@@ -244,6 +246,7 @@ def main():
     finally:
         obs.stop()
         obs.join()
+        close_publisher()
 
 if __name__ == "__main__":
     main()
