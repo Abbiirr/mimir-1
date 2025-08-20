@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Realtime Click Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { font-family: system-ui, sans-serif; }
+    body { display: grid; min-height: 100dvh; place-items: center; background: #0b1020; color: #e6eaf2;}
+    .card { background: #121a33; padding: 2rem; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+    h1 { margin-top: 0; font-weight: 700; }
+    .row { display: grid; grid-template-columns: repeat(4, minmax(100px, 1fr)); gap: 1rem; }
+    button { padding: 1rem; border: 0; border-radius: 12px; font-size: 1.1rem; cursor: pointer; }
+    button:hover { opacity: .9; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Click tracker → Kafka</h1>
+    <div class="row">
+      <button data-b="A">Button A</button>
+      <button data-b="B">Button B</button>
+      <button data-b="C">Button C</button>
+      <button data-b="D">Button D</button>
+    </div>
+    <p id="status" style="opacity:.8;margin-top:1rem"></p>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    async function send(button) {
+      console.log(`[UI] Clicked ${button} @`, new Date().toISOString());
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/event', {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ button })
+        });
+        const body = await res.json();
+        if (body.ok) {
+          statusEl.textContent = `Sent ${button} at ${new Date().toLocaleTimeString()}`;
+          console.log(`[NET] /api/event -> ok`);
+        } else {
+          statusEl.textContent = `Failed: ${body.error || 'unknown error'}`;
+          console.error(`[NET] /api/event ->`, body);
+        }
+      } catch (e) {
+        statusEl.textContent = `Error: ${e}`;
+        console.error(`[NET] /api/event error`, e);
+      }
+    }
+    document.querySelectorAll("button[data-b]").forEach(btn => {
+      btn.addEventListener("click", () => send(btn.dataset.b));
+    });
+  </script>
+</body>
+</html>

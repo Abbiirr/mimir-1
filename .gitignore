@@ -8,3 +8,5 @@ core/__pycache__/
 excel/excels/
 
 *.pyc
+
+excel/.excel_state.json
