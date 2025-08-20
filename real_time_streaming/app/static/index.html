@@ -1,57 +1,189 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8" />
-  <title>Realtime Click Tracker</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root { font-family: system-ui, sans-serif; }
-    body { display: grid; min-height: 100dvh; place-items: center; background: #0b1020; color: #e6eaf2;}
-    .card { background: #121a33; padding: 2rem; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
-    h1 { margin-top: 0; font-weight: 700; }
-    .row { display: grid; grid-template-columns: repeat(4, minmax(100px, 1fr)); gap: 1rem; }
-    button { padding: 1rem; border: 0; border-radius: 12px; font-size: 1.1rem; cursor: pointer; }
-    button:hover { opacity: .9; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>Click tracker → Kafka</h1>
-    <div class="row">
-      <button data-b="A">Button A</button>
-      <button data-b="B">Button B</button>
-      <button data-b="C">Button C</button>
-      <button data-b="D">Button D</button>
-    </div>
-    <p id="status" style="opacity:.8;margin-top:1rem"></p>
-  </div>
-
-  <script>
-    const statusEl = document.getElementById("status");
-    async function send(button) {
-      console.log(`[UI] Clicked ${button} @`, new Date().toISOString());
-      try {
-        const res = await fetch('http://127.0.0.1:8000/api/event', {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({ button })
-        });
-        const body = await res.json();
-        if (body.ok) {
-          statusEl.textContent = `Sent ${button} at ${new Date().toLocaleTimeString()}`;
-          console.log(`[NET] /api/event -> ok`);
-        } else {
-          statusEl.textContent = `Failed: ${body.error || 'unknown error'}`;
-          console.error(`[NET] /api/event ->`, body);
-        }
-      } catch (e) {
-        statusEl.textContent = `Error: ${e}`;
-        console.error(`[NET] /api/event error`, e);
+  <head>
+    <meta charset="utf-8" />
+    <title>Realtime Click Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        font-family: system-ui, sans-serif;
       }
-    }
-    document.querySelectorAll("button[data-b]").forEach(btn => {
-      btn.addEventListener("click", () => send(btn.dataset.b));
-    });
-  </script>
-</body>
+      body {
+        display: grid;
+        min-height: 100dvh;
+        place-items: center;
+        background: #0b1020;
+        color: #e6eaf2;
+      }
+      .card {
+        background: #121a33;
+        padding: 2rem;
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        width: min(720px, 92vw);
+      }
+      h1 {
+        margin-top: 0;
+        font-weight: 700;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(100px, 1fr));
+        gap: 1rem;
+      }
+      button {
+        padding: 1rem;
+        border: 0;
+        border-radius: 12px;
+        font-size: 1.1rem;
+        cursor: pointer;
+      }
+      button:hover {
+        opacity: 0.9;
+      }
+      .counts {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.75rem;
+      }
+      .pill {
+        background: #0e1530;
+        border: 1px solid #27335e;
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        text-align: center;
+      }
+      .pill b {
+        display: block;
+        font-size: 0.9rem;
+        opacity: 0.8;
+      }
+      .muted {
+        opacity: 0.8;
+        margin-top: 1rem;
+      }
+      .err {
+        color: #ff9aa2;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Click tracker → Kafka</h1>
+
+      <div class="row">
+        <button data-b="A">Button A</button>
+        <button data-b="B">Button B</button>
+        <button data-b="C">Button C</button>
+        <button data-b="D">Button D</button>
+      </div>
+
+      <div class="counts" id="counts">
+        <div class="pill"><b>A</b><span id="cA">0</span></div>
+        <div class="pill"><b>B</b><span id="cB">0</span></div>
+        <div class="pill"><b>C</b><span id="cC">0</span></div>
+        <div class="pill"><b>D</b><span id="cD">0</span></div>
+      </div>
+
+      <p id="status" class="muted"></p>
+    </div>
+
+    <script>
+      // ---------- Endpoint discovery (works from 8000 or 5500) ----------
+      const API_PORT = 8000;
+      const isOnApiPort = location.port === String(API_PORT);
+      const apiHost = isOnApiPort
+        ? location.host
+        : `${location.hostname}:${API_PORT}`;
+      const httpBase = `${location.protocol}//${apiHost}`;
+
+      // Pick ws/wss per current page protocol (MDN WebSocket)
+      const wsScheme = location.protocol === "https:" ? "wss" : "ws";
+      const wsUrl = `${wsScheme}://${apiHost}/ws/clicks`;
+
+      // ---------- UI helpers ----------
+      const statusEl = document.getElementById("status");
+      const counters = { A: 0, B: 0, C: 0, D: 0 };
+      const set = (id, v) =>
+        (document.getElementById(id).textContent = String(v));
+      function renderCounts(obj) {
+        if (!obj) return;
+        counters.A = obj.A ?? 0;
+        counters.B = obj.B ?? 0;
+        counters.C = obj.C ?? 0;
+        counters.D = obj.D ?? 0;
+        set("cA", counters.A);
+        set("cB", counters.B);
+        set("cC", counters.C);
+        set("cD", counters.D);
+      }
+
+      // ---------- WebSocket with simple auto-reconnect ----------
+      let ws;
+      let retryMs = 500; // backoff up to ~10s
+      function connectWS() {
+        try {
+          ws = new WebSocket(wsUrl);
+          ws.onopen = () => {
+            console.log("[WS] connected", wsUrl);
+            statusEl.textContent = "Live counts connected.";
+            retryMs = 500;
+          };
+          ws.onmessage = (ev) => {
+            const { counts } = JSON.parse(ev.data || "{}");
+            console.log("[WS] counts:", counts);
+            renderCounts(counts);
+          };
+          ws.onclose = () => {
+            console.warn("[WS] closed; retrying...");
+            statusEl.textContent = "Live counts disconnected. Reconnecting…";
+            setTimeout(connectWS, retryMs);
+            retryMs = Math.min(retryMs * 2, 10000);
+          };
+          ws.onerror = (e) => console.error("[WS] error:", e);
+        } catch (e) {
+          console.error("[WS] failed to construct:", e);
+          setTimeout(connectWS, retryMs);
+          retryMs = Math.min(retryMs * 2, 10000);
+        }
+      }
+      connectWS();
+
+      // ---------- Click -> POST /api/event ----------
+      async function send(button) {
+        console.log(`[UI] Clicked ${button} @`, new Date().toISOString());
+        try {
+          const res = await fetch(`${httpBase}/api/event`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            // Default fetch mode is 'cors' when cross-origin (MDN Fetch)
+            body: JSON.stringify({ button }),
+          });
+          const body = await res.json();
+          if (body.ok) {
+            statusEl.textContent = `Sent ${button} at ${new Date().toLocaleTimeString()}`;
+            console.log(`[NET] /api/event -> ok`);
+          } else {
+            statusEl.innerHTML = `<span class="err">Failed:</span> ${
+              body.error || "unknown error"
+            }`;
+            console.error(`[NET] /api/event ->`, body);
+          }
+        } catch (e) {
+          statusEl.innerHTML = `<span class="err">Error:</span> ${e}`;
+          console.error(`[NET] /api/event error`, e);
+        }
+      }
+
+      document.querySelectorAll("button[data-b]").forEach((btn) => {
+        btn.addEventListener("click", () => send(btn.dataset.b));
+      });
+      window.addEventListener("beforeunload", () => {
+        try {
+          ws && ws.close();
+        } catch {}
+      });
+    </script>
+  </body>
 </html>
