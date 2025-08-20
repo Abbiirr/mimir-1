@@ -1,9 +1,12 @@
 # settings.py
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional, Dict, Any
 from pydantic import SecretStr, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+ROOT = Path(__file__).resolve().parents[1]   # .../core/ -> repo root
+ENV_PATH = ROOT / ".env"
 
 class KafkaProducerSettings(BaseSettings):
     """Producer-specific settings"""
@@ -137,7 +140,7 @@ class AppSettings(BaseSettings):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
 
     model_config = SettingsConfigDict(
-        env_file="../.env",
+        env_file=str(ENV_PATH),
         env_file_encoding="utf-8",
         env_nested_delimiter="__",
         case_sensitive=False,
