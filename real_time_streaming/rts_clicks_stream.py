@@ -47,7 +47,8 @@ class ClickStreamAggregator:
         self._last_snapshot: Dict[str, int] = {}
         self._window_start = datetime.now(timezone.utc)
         self._lock = threading.Lock()
-        
+        self._totals = Counter()  # cumulative across process lifetime
+        self.snapshot_mode = "window"  # or "window" or "cumulative"
 
     # public API for WS
     def snapshot(self) -> Dict[str, int]:
@@ -94,8 +95,9 @@ class ClickStreamAggregator:
                         if btn:
                             with self._lock:
                                 self._counts[btn] += 1
-                                # keep latest snapshot fresh for WS
-                                self._last_snapshot = dict(self._counts)
+                                self._totals[btn] += 1  # <— keep a running total
+                                self._last_snapshot = dict(
+                                    self._totals if self.snapshot_mode == "cumulative" else self._counts)
                             progressed = True
 
                 # publish window if time
@@ -118,10 +120,8 @@ class ClickStreamAggregator:
             counts = dict(self._counts)
             window_start = self._window_start
             window_end = datetime.now(timezone.utc)
-            # reset for next window
-            self._counts = Counter()
+            self._counts = Counter()  # reset only the window, not totals
             self._window_start = window_end
-            self._last_snapshot = {}  # optional: clear live snapshot after publish
 
         if counts:
             publish_counts(
